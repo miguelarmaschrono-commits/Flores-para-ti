@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Para Victoria 🩵</title>
+
+<!--
+=====================================================================
+ CONTEXTO PARA OTRO CHAT (pega este bloque al continuar el proyecto)
+=====================================================================
+ Proyecto: página de cumpleaños para Victoria ("my crush" de toda la vida).
+ Stack: UN SOLO HTML + Tailwind por CDN + JS vanilla. Hosting: Firebase Hosting.
+ Tono: cariñoso y sincero, paleta celeste 🩵 (tokens en tailwind.config).
+ TODO el contenido editable vive en CONFIG (sección 1 del <script>).
+ El HTML solo trae contenedores con id; el JS los rellena desde CONFIG.
+
+ VERSIÓN 2 — MAPA DEL ARCHIVO
+   [A] <head>          Tailwind, fuentes, estilos propios (flip 3D, confeti, latido)
+   [B] ENTRADA         id="entrada"   pantalla "Entrar": al clic arranca la música ambiental
+   [C] HERO            id="hero"
+   [D] CARTA           id="carta"     se abre con un clic        (CONFIG.carta)
+   [E] RAZONES         id="razones"                              (CONFIG.razones)
+   [F] RECUERDOS       id="recuerdos" tarjetas que se voltean    (CONFIG.recuerdos)
+   [G] PASTEL          id="pastel"    vela: clic o soplar (mic)  (CONFIG.pastel)
+   [H] MÚSICA          id="musica"    embeds Spotify/YouTube     (CONFIG.canciones)
+   [J] CIERRE          id="cierre"                               (CONFIG.cierre)
+   [M] GALAXIA         id="galaxia"   escena final: canvas de estrellas, corazón-constelación,
+                                      estrellas con mensaje y estrella fugaz (CONFIG.galaxia)
+   [N] DECIR           id="decir"     "¿Algo que quieras decirme?": ella escribe y el botón abre
+                                      WhatsApp con su texto ya escrito (CONFIG.decir)
+   [O] EXTRAS v4       saludo según la hora en el hero (CONFIG.saludos), carta que se escribe sola
+                       (CONFIG.carta.velocidad) y easter egg: 5 toques al nombre (CONFIG.sorpresa)
+   [K] SECRETOS        corazones escondidos que se inyectan en cualquier sección (CONFIG.secretos)
+   [L] <script>        1) CONFIG  2) render  3) módulos: música, carta, flip, pastel, secretos
+
+ NOTAS TÉCNICAS
+   - Autoplay: los navegadores solo dejan sonar tras un clic, por eso existe "Entrar".
+   - Música ambiental: CONFIG.ambiente.mp3 (archivo propio, recomendado) o .youtubeId.
+   - Micrófono (soplar) exige HTTPS o localhost; en Firebase Hosting funciona.
+   - Cada módulo es una función independiente: se puede quitar borrando su sección y su llamada final.
+
+ IDEAS PENDIENTES
+   - Memorama con fotos reales (mini juego; el quiz se quitó)
+   - Guardar también la respuesta de "¿Algo que quieras decirme?" en Firestore (hoy solo sale por WhatsApp)
+   - Línea de tiempo y contador de días
+   - Deploy: firebase init hosting -> carpeta "public" -> este archivo como index.html
+=====================================================================
+-->
+
+<!-- [A] TAILWIND (CDN) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: {
+    colors: { cielo:'#e8f5ff', celeste:'#6cc4f5', mar:'#2b8fd1', noche:'#0d2340', rosa:'#ffb8cf' },
+    fontFamily: { titulo:['Fraunces','serif'], cuerpo:['Nunito','sans-serif'] },
+  } } }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;1,9..144,400;1,9..144,600&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+
+<style>
+  html { scroll-behavior:smooth; }
+  body { background:linear-gradient(180deg,#e8f5ff 0%,#d3ecff 45%,#f4faff 100%); color:#0d2340; }
+  body.bloqueado { overflow:hidden; }
+  :focus-visible { outline:3px solid #2b8fd1; outline-offset:3px; border-radius:8px; }
+  section { position:relative; }  /* necesario para ubicar los corazones secretos */
+
+  .latido { display:inline-block; animation:latido 1.8s ease-in-out infinite; }
+  @keyframes latido { 0%,100%{transform:scale(1)} 50%{transform:scale(1.18)} }
+
+  /* Carta */
+  .carta-cuerpo { display:grid; grid-template-rows:0fr; transition:grid-template-rows .7s ease; }
+  .carta-cuerpo > div { overflow:hidden; }
+  .carta.abierta .carta-cuerpo { grid-template-rows:1fr; }
+
+  /* Tarjetas que se voltean */
+  .flip { perspective:900px; cursor:pointer; }
+  .flip-in { position:relative; width:100%; height:100%; transition:transform .7s; transform-style:preserve-3d; }
+  .flip.volteada .flip-in { transform:rotateY(180deg); }
+  .cara { position:absolute; inset:0; backface-visibility:hidden; -webkit-backface-visibility:hidden; border-radius:1.25rem; overflow:hidden; }
+  .dorso { transform:rotateY(180deg); }
+
+  /* Vela */
+  .llama { transform-origin:50% 100%; animation:llama .25s ease-in-out infinite alternate; transition:opacity .4s, transform .4s; }
+  .apagada .llama { opacity:0; transform:scale(.2); animation:none; }
+  @keyframes llama { from{transform:scale(1) rotate(-3deg)} to{transform:scale(1.08,.94) rotate(3deg)} }
+
+  /* Corazones secretos: discretos hasta que pasas cerca */
+  .secreto { position:absolute; z-index:5; font-size:1.4rem; opacity:.3; transition:opacity .3s, transform .3s; background:none; border:0; cursor:pointer; }
+  .secreto:hover, .secreto:focus-visible { opacity:1; transform:scale(1.3); }
+  .secreto.hallado { opacity:.9; pointer-events:none; filter:saturate(1.4); }
+
+  /* Galaxia: estrellas con mensaje (clicables sobre el canvas) */
+  .estrella-msg { position:absolute; pointer-events:auto; padding:.6rem; font-size:1.6rem; line-height:1; color:#fff; background:none; border:0; cursor:pointer;
+                  text-shadow:0 0 10px #6cc4f5,0 0 22px #6cc4f5; animation:brillo 2.4s ease-in-out infinite; }
+  .estrella-msg.vista { color:#ffb8cf; text-shadow:0 0 10px #ffb8cf; animation:none; }
+  @keyframes brillo { 0%,100%{transform:scale(1);opacity:.7} 50%{transform:scale(1.35);opacity:1} }
+  @media (prefers-reduced-motion:reduce) { .estrella-msg { animation:none; } }
+
+  /* Carta que se escribe sola: cursor parpadeante en el párrafo activo */
+  .escribiendo::after { content:'▌'; color:#2b8fd1; animation:parpadeo .9s steps(1) infinite; }
+  @keyframes parpadeo { 50% { opacity:0; } }
+
+  /* Entrada */
+  #entrada { transition:opacity .8s; }
+  #entrada.salir { opacity:0; pointer-events:none; }
+
+  @media (prefers-reduced-motion:reduce) {
+    .latido, .llama { animation:none; }
+    .carta-cuerpo, .flip-in, #entrada { transition:none; }
+    html { scroll-behavior:auto; }
+  }
+</style>
+</head>
+
+<body class="font-cuerpo antialiased bloqueado">
+
+<!-- Lienzo del confeti (lo usa el pastel) -->
+<canvas id="confeti" class="fixed inset-0 w-full h-full pointer-events-none z-40" aria-hidden="true"></canvas>
+<!-- Reproductor oculto de YouTube para la música ambiental (solo si se usa youtubeId) -->
+<div id="yt-ambiente" class="fixed w-px h-px opacity-0 pointer-events-none" aria-hidden="true"></div>
+<!-- Aviso flotante con la frase de cada secreto -->
+<div id="toast" role="status" aria-live="polite"
+     class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-sm w-[90%] text-center bg-noche text-cielo rounded-2xl px-5 py-4 shadow-xl opacity-0 pointer-events-none transition-opacity duration-300"></div>
+
+<!-- Sorpresa del easter egg (5 toques al nombre). z-[38]: queda debajo del confeti -->
+<div id="sorpresa" class="fixed inset-0 z-[38] hidden place-items-center bg-noche/95 text-cielo text-center p-6" role="dialog" aria-modal="true" aria-labelledby="sorpresa-titulo">
+  <div class="max-w-md">
+    <p class="text-6xl mb-6" aria-hidden="true">🎁</p>
+    <h2 id="sorpresa-titulo" class="font-titulo italic text-4xl"></h2>
+    <p id="sorpresa-texto" class="mt-5 text-lg leading-relaxed"></p>
+    <button id="sorpresa-cerrar" class="mt-8 bg-celeste text-noche font-bold px-8 py-3 rounded-full hover:bg-white transition-colors"></button>
+  </div>
+</div>
+<!-- Botón de silenciar música -->
+<button id="mute" class="fixed top-4 right-4 z-30 bg-white/80 rounded-full w-11 h-11 text-xl hidden" aria-label="Silenciar música">🔊</button>
+
+<!-- ============================================================
+     [B] ENTRADA — al tocar "Entrar" arranca la música ambiental
+     EDITAR: CONFIG.entrada
+     ============================================================ -->
+<div id="entrada" class="fixed inset-0 z-50 grid place-items-center text-center px-6 bg-gradient-to-b from-cielo to-celeste/60">
+  <div>
+    <p class="text-5xl mb-6"><span class="latido">🩵</span></p>
+    <h1 id="entrada-titulo" class="font-titulo italic text-5xl sm:text-7xl"></h1>
+    <p id="entrada-sub" class="mt-4 text-lg text-noche/80"></p>
+    <button id="entrar" class="mt-10 bg-noche text-cielo font-bold px-10 py-4 rounded-full text-lg hover:bg-mar transition-colors">Entrar</button>
+  </div>
+</div>
+
+<main>
+
+  <!-- [C] HERO -->
+  <section id="hero" class="min-h-screen flex flex-col items-center justify-center text-center px-6">
+    <p id="hero-saludo" class="font-titulo italic text-xl text-noche/70 mb-2"></p>
+    <p id="hero-frase" class="text-lg sm:text-xl text-mar font-semibold mb-4"></p>
+    <h2 id="hero-nombre" class="font-titulo italic text-7xl sm:text-9xl leading-none"></h2>
+    <p class="mt-6 text-4xl"><span class="latido">🩵</span></p>
+    <p id="hero-sub" class="mt-6 max-w-md text-lg text-noche/80"></p>
+    <a href="#carta" class="mt-12 inline-block bg-noche text-cielo font-bold px-8 py-3 rounded-full hover:bg-mar transition-colors">Bajar, hay algo para ti</a>
+  </section>
+
+  <!-- [D] CARTA — EDITAR: CONFIG.carta -->
+  <section id="carta" class="px-6 py-24 flex justify-center">
+    <article class="carta w-full max-w-2xl bg-white rounded-[2rem] shadow-xl shadow-mar/20 p-8 sm:p-12">
+      <h2 id="carta-titulo" class="font-titulo text-4xl sm:text-5xl"></h2>
+      <button id="carta-btn" aria-expanded="false" aria-controls="carta-texto"
+              class="mt-6 bg-celeste text-noche font-bold px-6 py-3 rounded-full hover:bg-mar hover:text-white transition-colors">Abrir carta</button>
+      <div id="carta-texto" class="carta-cuerpo"><div>
+        <div id="carta-parrafos" class="pt-8 space-y-5 text-lg leading-relaxed text-noche/90 max-w-prose"></div>
+        <p id="carta-firma" class="pt-8 font-titulo italic text-2xl text-mar"></p>
+      </div></div>
+    </article>
+  </section>
+
+  <!-- [E] RAZONES — EDITAR: CONFIG.razones -->
+  <section id="razones" class="px-6 py-24 max-w-3xl mx-auto">
+    <h2 id="razones-titulo" class="font-titulo text-4xl sm:text-5xl text-center mb-12"></h2>
+    <ul id="razones-lista" class="space-y-4"></ul>
+  </section>
+
+  <!-- [F] RECUERDOS — tarjetas que se voltean
+       EDITAR: CONFIG.recuerdos -> { foto:'img/x.jpg', titulo:'frente de la tarjeta', texto:'reverso' } -->
+  <section id="recuerdos" class="px-6 py-24 max-w-5xl mx-auto">
+    <h2 id="recuerdos-titulo" class="font-titulo text-4xl sm:text-5xl text-center mb-3"></h2>
+    <p id="recuerdos-sub" class="text-center text-noche/70 mb-12"></p>
+    <div id="recuerdos-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"></div>
+  </section>
+
+  <!-- [G] PASTEL — EDITAR: CONFIG.pastel -->
+  <section id="pastel" class="px-6 py-24 text-center">
+    <h2 id="pastel-titulo" class="font-titulo text-4xl sm:text-5xl mb-3"></h2>
+    <p id="pastel-sub" class="text-noche/70 mb-10"></p>
+    <div id="pastel-caja" class="mx-auto w-56">
+      <button id="pastel-svg" class="block w-full" aria-label="Apagar la vela">
+        <svg viewBox="0 0 200 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pastel con una vela">
+          <g class="llama"><path d="M100 18c14 18 18 28 8 42-6 8-16 8-22 0-9-13-1-24 14-42z" fill="#ffb347"/><path d="M100 36c6 8 7 13 3 19-3 4-8 4-11 0-4-6 0-11 8-19z" fill="#fff3b0"/></g>
+          <rect x="94" y="62" width="12" height="42" rx="3" fill="#6cc4f5"/>
+          <rect x="30" y="104" width="140" height="48" rx="12" fill="#ffffff"/>
+          <rect x="30" y="104" width="140" height="14" rx="7" fill="#ffb8cf"/>
+          <rect x="14" y="150" width="172" height="56" rx="14" fill="#2b8fd1"/>
+          <rect x="14" y="150" width="172" height="14" rx="7" fill="#6cc4f5"/>
+        </svg>
+      </button>
+    </div>
+    <div class="mt-8 flex flex-wrap gap-3 justify-center">
+      <button id="pastel-soplar" class="bg-celeste text-noche font-bold px-6 py-3 rounded-full hover:bg-mar hover:text-white transition-colors">Soplar con el micrófono</button>
+      <button id="pastel-reset" class="hidden bg-white text-noche font-bold px-6 py-3 rounded-full border-2 border-celeste">Encender otra vez</button>
+    </div>
+    <p id="pastel-msg" class="mt-6 font-titulo italic text-2xl text-mar min-h-[2rem]"></p>
+  </section>
+
+  <!-- [H] MÚSICA — EDITAR: CONFIG.canciones { tipo:'spotify'|'youtube', id, nota } -->
+  <section id="musica" class="px-6 py-24 max-w-3xl mx-auto">
+    <h2 id="musica-titulo" class="font-titulo text-4xl sm:text-5xl text-center mb-3"></h2>
+    <p id="musica-sub" class="text-center text-noche/70 mb-12"></p>
+    <div id="musica-lista" class="space-y-8"></div>
+  </section>
+
+  <!-- [J] CIERRE — EDITAR: CONFIG.cierre -->
+  <section id="cierre" class="px-6 py-32 text-center">
+    <p class="text-5xl mb-6">🩵</p>
+    <h2 id="cierre-titulo" class="font-titulo italic text-5xl sm:text-6xl"></h2>
+    <p id="cierre-texto" class="mt-6 max-w-md mx-auto text-lg text-noche/80"></p>
+  </section>
+
+  <!-- ============================================================
+       [M] LOVE GALAXIA — escena final
+       Canvas: estrellas en espiral + corazón-constelación con su nombre.
+       Las estrellas con mensaje y la estrella fugaz se crean desde CONFIG.galaxia.
+       ============================================================ -->
+  <section id="galaxia" class="relative overflow-hidden min-h-screen text-cielo text-center"
+           style="background:radial-gradient(ellipse at 50% 42%,#1b3a68 0%,#0d2340 55%,#060f20 100%)">
+    <canvas id="galaxia-cv" class="absolute inset-0 w-full h-full" aria-hidden="true"></canvas>
+    <div id="galaxia-estrellas" class="absolute inset-0 z-10 pointer-events-none"></div>
+    <div class="relative z-10 min-h-screen flex flex-col justify-between items-center px-6 pt-20 pb-14 pointer-events-none">
+      <div>
+        <h2 id="galaxia-titulo" class="font-titulo italic text-4xl sm:text-6xl"></h2>
+        <p id="galaxia-sub" class="mt-3 text-cielo/80"></p>
+      </div>
+      <div class="pointer-events-auto">
+        <p id="galaxia-msg" aria-live="polite" class="min-h-[4rem] max-w-md mx-auto font-titulo italic text-2xl text-celeste"></p>
+        <button id="galaxia-deseo" class="mt-4 bg-cielo text-noche font-bold px-7 py-3 rounded-full hover:bg-celeste transition-colors">Pedir un deseo ✨</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       [N] ¿ALGO QUE QUIERAS DECIRME? — escena final
+       Ella escribe un mensaje; el botón abre WhatsApp (a tu número) con su texto
+       ya escrito. EDITAR: CONFIG.decir
+       ============================================================ -->
+  <section id="decir" class="relative overflow-hidden min-h-[90vh] grid place-items-center text-center px-6 py-24 text-cielo"
+           style="background:linear-gradient(180deg,#060f20 0%,#0d2340 100%)">
+    <div class="w-full max-w-xl">
+      <h2 id="decir-titulo" class="font-titulo italic text-5xl sm:text-6xl"></h2>
+      <p id="decir-sub" class="mt-4 text-cielo/80"></p>
+      <label for="decir-texto" class="sr-only">Tu mensaje</label>
+      <textarea id="decir-texto" rows="5" maxlength="600"
+                class="mt-10 w-full rounded-2xl bg-white/10 border-2 border-cielo/30 focus:border-celeste text-cielo placeholder-cielo/50 p-5 text-lg resize-none"></textarea>
+      <a id="decir-enviar" role="button" aria-disabled="true" target="_blank" rel="noopener" href="#"
+         class="mt-6 inline-block bg-[#25D366] text-noche font-bold px-8 py-4 rounded-full transition opacity-50 pointer-events-none"></a>
+      <p id="decir-gracias" class="mt-8 font-titulo italic text-3xl text-celeste min-h-[2.5rem]" aria-live="polite"></p>
+    </div>
+  </section>
+
+</main>
+
+<script>
+/* ===============================================================
+   1) CONFIG — todo el contenido editable. Los textos son ejemplos.
+   =============================================================== */
+const CONFIG = {
+  nombre: 'Victoria',
+  entrada: { titulo: 'Para Victoria', sub: 'Pon el volumen y toca para entrar.' },
+
+  // Música ambiental: usa UNA de las dos. Con mp3 pon la ruta (ej. 'audio/cancion.mp3').
+  ambiente: { mp3: '', youtubeId: 'wUr5VTyGT24', volumen: 0.5 },
+
+  hero: { frase: '¡Feliz cumpleaños!', sub: 'Hice esta página solo para ti. Hay una carta, un pastel, un juego y algunos secretos escondidos.' },
+
+  carta: {
+    titulo: 'Una carta para ti',
+    parrafos: [
+      'Victoria, mientras con palabras te digo «feliz cumpleaños», lo que de verdad quiero decirte, en el fondo, es esto:',
+      'Que la vida te abrace tan bonito como tú abrazas a quienes te quieren. Que nunca te falten razones para sonreír, sueños por cumplir y personas que cuiden de tu corazón. Porque el mejor regalo que recibió el mundo fue el día en que naciste, y no te cambiaría por nada. 🩵',
+      'Eres tan maravillosa, magnífica, impresionante, increíble, bella, hermosa y divertida... Eres tan tú, y solo por eso ya hay razón más que suficiente para desearte toda mi felicidad en este día, tan maravilloso como tú. ¡Feliz cumpleaños!',
+    ],
+    firma: 'De mí para ti. I love you 🩵',
+    velocidad: 30,   // milisegundos por letra al abrir la carta (más bajo = más rápido); tocar el texto la completa
+  },
+
+  razones: {
+    titulo: 'Cosas que me encantan de ti',
+    lista: [
+      'Que tienes un lindo corazón.',
+      'Lo hermosa que eres.',
+      'Que eres única.',
+      'Lo increíble que eres.',
+      'Cómo me siento contigo.',
+    ],
+  },
+
+  recuerdos: {
+    titulo: 'Recuerdos', sub: 'Toca cada tarjeta para darle la vuelta.',
+    lista: [
+      // titulo = frente de la tarjeta (o pie de la foto) | texto = reverso | foto = ruta opcional (ej. 'img/liceo.jpg')
+      { foto: '', titulo: '¿Recuerdas, cuando me declaré?', texto: 'ahora lo pienso y fue Demasiado incómodo, jajaja 😅' },
+      { foto: '', titulo: '¿Recuerdas los dias en el liceo?', texto: 'para mi fueron,Buenos momentos sobre todo en los que estabas tu  🩵' },
+      { foto: '', titulo: '¿Recuerdas un día ese "Sí"?', texto: 'Terminamos en el río 🌊' },
+      { foto: '', titulo: '¡RECUERDA SIEMPRE!', texto: 'Estaré contigo cuando me siempre que me necesites 🩵' },
+    ],
+  },
+
+  pastel: {
+    titulo: 'Pide un deseo', sub: 'Toca la vela, o sopla de verdad si dejas usar el micrófono.',
+    umbral: 55,                       // sensibilidad del soplido (más bajo = más sensible)
+    mensaje: '¡Que se cumpla! 🩵',
+    sinMic: 'No pude usar el micrófono. Toca la vela para apagarla.',
+  },
+
+  musica: {
+    titulo: 'Canciones que me recuerdan a ti', sub: 'Dale play, una por una.',
+    // spotify: ID tras /track/ (sin ?si=...) | youtube: ID tras v=
+    canciones: [
+      { tipo: 'spotify', id: '3VHObP4fL2OZSRjMEw9Gpx' },   // nota opcional: agrega  nota: 'por qué esta canción'
+      { tipo: 'spotify', id: '7g02cEt79oeWQM2H4YG3JO' },
+      { tipo: 'spotify', id: '1cbBGNxtbtWFF14bCgwApy' },
+      { tipo: 'spotify', id: '1Cxd4ZJJ9VOQQpNcpdcZEQ' },
+      { tipo: 'spotify', id: '69yhZqeibwvBncRVf5xxqu' },
+    ],
+  },
+
+  // Corazones escondidos: 'en' = id de la sección, x/y = posición dentro de ella.
+  secretos: {
+    lista: [
+      { en: 'hero',      x: '8%',  y: '14%', frase: 'Desde que hablamos, mis días mejoraron. [Gracias corazón]' },
+      { en: 'razones',   x: '90%', y: '8%',  frase: 'Podría escribir cien razones más. [y todavia me faltarian]' },
+      { en: 'recuerdos', x: '4%',  y: '92%', frase: 'Mi recuerdo favorito siempre te incleyen a ti. [aunque sean pocos]' },
+      { en: 'musica',    x: '92%', y: '45%', frase: 'Cada canción de amor me suena a ti. [todas y cada una]' },
+      { en: 'cierre',    x: '15%', y: '20%', frase: 'Sí, también estaba escondido este. [no pense que los descubrieras jsjsj]' },
+      { en: 'galaxia', x: '6%', y: '10%', frase: 'Este lo escondí entre las estrellas. [pero ninguna brilla tanto como vos]' },
+    ],
+    final: '¡Los encontraste todos! Eres tan lista como bonita 🩵 [Mereces todo lo bueno bby]',
+  },
+
+  // Saludo del hero según la hora del dispositivo de ella (día 5–11 h, tarde 12–19 h, noche el resto)
+  saludos: { dia: 'Buenos días', tarde: 'Buenas tardes', noche: 'Buenas noches' },
+
+  // Easter egg: se abre al tocar su nombre 5 veces seguidas (el conteo se reinicia tras 2 s sin tocar)
+  sorpresa: {
+    titulo: 'Sabía que ibas a tocar tu nombre 🩵',
+    texto: 'Esta sorpresa estaba escondida solo para ti. [este era mas dificil, te ganaste Mi Corazon de por vida 😍]',
+    boton: 'Guardar el secreto',
+  },
+
+  // ¿Algo que quieras decirme?: escena final. Ella escribe y el botón abre WhatsApp con su texto.
+  decir: {
+    titulo: '¿Algo que quieras decirme?',
+    sub: 'Escríbelo aquí, sin pena. Me llegará directo por WhatsApp. 🩵',
+    placeholder: 'Escribe aquí lo que quieras decirme...',
+    boton: 'Enviar por WhatsApp',
+    gracias: 'Gracias por escribirme. Lo voy a leer con mucho cariño 🩵',
+    // TU número de WhatsApp con código de país, solo dígitos. Si lo dejas vacío, ella elige el contacto.
+    whatsapp: '584129315220',
+    firmaWA: '— Victoria 🩵',   // se añade al final de su mensaje
+  },
+
+  // Love galaxia: escena final. 'mensajes' son estrellas clicables (x/y = posición en %).
+  galaxia: {
+    titulo: 'Mi galaxia lleva tu nombre',
+    sub: 'Toca las estrellas que brillan.',
+    mensajes: [
+      { x: '18%', y: '24%', frase: 'Contigo cualquier lugar es mi favorito. [tu eres mi lugar FV]' },
+      { x: '80%', y: '20%', frase: 'Eres la persona que más quiero ver sonreír. [si tu eres feliz eso me hace feliz]' },
+      { x: '10%', y: '55%', frase: 'Si pudiera pedir un deseo, ya sabes cuál sería. [obvio no sabes 😌]' },
+      { x: '88%', y: '58%', frase: 'Entre tantas estrellas, tú sigues siendo mi favorita. [ninguna brilla como vos]' },
+      { x: '50%', y: '74%', frase: 'Feliz cumpleaños, Victoria. [Espero seguir siendo parte de tu vida para poder seguir celebrándolo]' },
+    ],
+    deseo: 'Cierra los ojos y pide un deseo... yo ya pedí el mío  [A ver si adivinas cual fue]',
+    final: '¡Encontraste todas las estrellas! ahi se resume mi universo entero',
+  },
+
+  cierre: { titulo: 'Gracias por existir', texto: 'Que hoy sea un día tan bonito como tú. [esto esta super atrazado pero espero sea igual de importante]' },
+};
+
+/* ===============================================================
+   2) RENDER — rellena el HTML con CONFIG. Normalmente no se toca.
+   =============================================================== */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const pendiente = (id) => !id || id.startsWith('PEGA_');
+const reducido = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Saludo según la hora del dispositivo (textos en CONFIG.saludos)
+function saludoHora() {
+  const h = new Date().getHours(), s = CONFIG.saludos;
+  return h >= 5 && h < 12 ? s.dia : h >= 12 && h < 20 ? s.tarde : s.noche;
+}
+
+function embedHTML(c) {
+  if (pendiente(c.id)) return `<div class="rounded-2xl border-2 border-dashed border-celeste p-8 text-center text-noche/60">Falta el ID de ${esc(c.tipo)}. Pégalo en CONFIG.canciones.</div>`;
+  if (c.tipo === 'spotify') return `<iframe class="w-full rounded-2xl" style="border:0" height="152" loading="lazy" src="https://open.spotify.com/embed/track/${encodeURIComponent(c.id)}" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" title="Canción de Spotify"></iframe>`;
+  return `<div class="aspect-video"><iframe class="w-full h-full rounded-2xl" style="border:0" loading="lazy" src="https://www.youtube.com/embed/${encodeURIComponent(c.id)}" allow="accelerometer; encrypted-media; picture-in-picture" allowfullscreen title="Video de YouTube"></iframe></div>`;
+}
+
+function render() {
+  const C = CONFIG;
+  document.title = `Para ${C.nombre} 🩵`;
+  $('entrada-titulo').textContent = C.entrada.titulo;
+  $('entrada-sub').textContent = C.entrada.sub;
+  $('hero-frase').textContent = C.hero.frase;
+  // El nombre es un botón (para el easter egg): iniciarNombre() le pone el clic
+  $('hero-nombre').innerHTML = `<button id="nombre-btn" class="font-titulo italic select-none" aria-label="${esc(C.nombre)}">${esc(C.nombre)}</button>`;
+  $('hero-saludo').textContent = `${saludoHora()}, ${C.nombre} 🩵`;
+  $('hero-sub').textContent = C.hero.sub;
+
+  $('carta-titulo').textContent = C.carta.titulo;
+  $('carta-parrafos').innerHTML = C.carta.parrafos.map((p) => `<p>${esc(p)}</p>`).join('');
+  $('carta-firma').textContent = C.carta.firma;
+
+  $('razones-titulo').textContent = C.razones.titulo;
+  $('razones-lista').innerHTML = C.razones.lista.map((r) =>
+    `<li class="bg-white/80 rounded-2xl px-6 py-5 text-lg shadow-sm flex gap-4 items-start"><span aria-hidden="true">🩵</span><span>${esc(r)}</span></li>`).join('');
+
+  $('recuerdos-titulo').textContent = C.recuerdos.titulo;
+  $('recuerdos-sub').textContent = C.recuerdos.sub;
+  $('recuerdos-grid').innerHTML = C.recuerdos.lista.map((r) => `
+    <div class="flip h-72" role="button" tabindex="0" aria-label="Voltear tarjeta">
+      <div class="flip-in">
+        <div class="cara frente bg-white shadow-lg">${r.foto
+          ? `<img src="${esc(r.foto)}" alt="" loading="lazy" class="w-full h-full object-cover"><p class="absolute inset-x-0 bottom-0 p-4 pt-10 text-cielo font-titulo italic text-lg bg-gradient-to-t from-noche/85 to-transparent">${esc(r.titulo || '')}</p>`
+          : `<div class="w-full h-full grid place-items-center bg-celeste/30 p-6 text-center font-titulo italic text-xl text-noche">${esc(r.titulo || '🩵')}</div>`}</div>
+        <div class="cara dorso bg-noche text-cielo p-6 grid place-items-center text-center font-titulo italic text-xl">${esc(r.texto)}</div>
+      </div>
+    </div>`).join('');
+
+  $('pastel-titulo').textContent = C.pastel.titulo;
+  $('pastel-sub').textContent = C.pastel.sub;
+
+  $('musica-titulo').textContent = C.musica.titulo;
+  $('musica-sub').textContent = C.musica.sub;
+  $('musica-lista').innerHTML = C.musica.canciones.map((c) =>
+    `<div>${embedHTML(c)}${c.nota ? `<p class="mt-3 text-center text-noche/70 italic">${esc(c.nota)}</p>` : ''}</div>`).join('');
+
+  $('cierre-titulo').textContent = C.cierre.titulo;
+  $('cierre-texto').textContent = C.cierre.texto;
+
+  $('galaxia-titulo').textContent = C.galaxia.titulo;
+  $('galaxia-sub').textContent = C.galaxia.sub;
+
+  $('decir-titulo').textContent = C.decir.titulo;
+  $('decir-sub').textContent = C.decir.sub;
+  $('decir-texto').placeholder = C.decir.placeholder;
+  $('decir-enviar').textContent = C.decir.boton;
+
+  $('sorpresa-titulo').textContent = C.sorpresa.titulo;
+  $('sorpresa-texto').textContent = C.sorpresa.texto;
+  $('sorpresa-cerrar').textContent = C.sorpresa.boton;
+  $('galaxia-estrellas').innerHTML = C.galaxia.mensajes.map((m, i) =>
+    `<button class="estrella-msg" data-i="${i}" style="left:${m.x};top:${m.y}" aria-label="Estrella con mensaje">✦</button>`).join('');
+}
+
+/* ===============================================================
+   3) MÓDULOS — cada uno es independiente
+   =============================================================== */
+
+/* ---- [B] Música ambiental + pantalla de entrada ---- */
+const musica = { audio: null, yt: null, ytListo: false, quiereSonar: false, silenciada: false };
+
+function prepararMusica() {
+  const a = CONFIG.ambiente;
+  if (a.mp3) {
+    musica.audio = new Audio(a.mp3);
+    musica.audio.loop = true;
+    musica.audio.volume = a.volumen;
+  } else if (!pendiente(a.youtubeId)) {
+    const s = document.createElement('script');
+    s.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(s);
+    window.onYouTubeIframeAPIReady = () => {
+      musica.yt = new YT.Player('yt-ambiente', {
+        width: '1', height: '1', videoId: a.youtubeId,
+        playerVars: { loop: 1, playlist: a.youtubeId, controls: 0 },
+        events: { onReady: (e) => { musica.ytListo = true; e.target.setVolume(a.volumen * 100); if (musica.quiereSonar) e.target.playVideo(); } },
+      });
+    };
+  }
+}
+
+function iniciarMusica() {
+  musica.quiereSonar = true;
+  if (musica.audio) musica.audio.play().catch(() => {});
+  if (musica.ytListo) musica.yt.playVideo();
+}
+
+function iniciarEntrada() {
+  $('entrar').addEventListener('click', () => {
+    iniciarMusica();
+    $('entrada').classList.add('salir');
+    document.body.classList.remove('bloqueado');
+    if (musica.audio || !pendiente(CONFIG.ambiente.youtubeId)) $('mute').classList.remove('hidden');
+    setTimeout(() => $('entrada').remove(), 900);
+  });
+  $('mute').addEventListener('click', () => {
+    musica.silenciada = !musica.silenciada;
+    if (musica.audio) musica.audio.muted = musica.silenciada;
+    if (musica.ytListo) musica.silenciada ? musica.yt.mute() : musica.yt.unMute();
+    $('mute').textContent = musica.silenciada ? '🔇' : '🔊';
+    $('mute').setAttribute('aria-label', musica.silenciada ? 'Activar música' : 'Silenciar música');
+  });
+}
+
+/* ---- [D] Carta ---- */
+function iniciarCarta() {
+  const carta = document.querySelector('.carta'), btn = $('carta-btn');
+  btn.addEventListener('click', () => {
+    const abierta = carta.classList.toggle('abierta');
+    btn.setAttribute('aria-expanded', abierta);
+    btn.textContent = abierta ? 'Cerrar carta' : 'Abrir carta';
+    if (abierta) escribirCarta();   // solo escribe la primera vez
+  });
+}
+
+/* ---- [D] Carta que se escribe sola (letra por letra, solo la primera vez) ---- */
+let cartaEscrita = false;
+async function escribirCarta() {
+  if (cartaEscrita) return;
+  cartaEscrita = true;
+  if (reducido) return;                                   // sin animación: el texto ya está completo
+  const cont = $('carta-parrafos'), ps = [...cont.children], firma = $('carta-firma');
+  const textos = ps.map((p) => p.textContent);
+  ps.forEach((p) => (p.textContent = ''));
+  firma.style.transition = 'opacity 1s'; firma.style.opacity = 0;
+  let saltar = false;
+  cont.addEventListener('click', () => { saltar = true; }); // tocar el texto lo completa de golpe
+  for (let i = 0; i < ps.length; i++) {
+    ps[i].classList.add('escribiendo');
+    for (const ch of textos[i]) {
+      ps[i].textContent += ch;
+      if (!saltar) await new Promise((r) => setTimeout(r, CONFIG.carta.velocidad));
+    }
+    ps[i].classList.remove('escribiendo');
+  }
+  firma.style.opacity = 1;
+}
+
+/* ---- [F] Tarjetas que se voltean ---- */
+function iniciarFlip() {
+  document.querySelectorAll('.flip').forEach((el) => {
+    const voltear = () => el.classList.toggle('volteada');
+    el.addEventListener('click', voltear);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); voltear(); } });
+  });
+}
+
+/* ---- Confeti (lo usa el pastel): cuadritos de colores + corazones ---- */
+const confeti = (() => {
+  const cv = $('confeti'), ctx = cv.getContext('2d');
+  let ps = [], corriendo = false;
+  const ajustar = () => { cv.width = innerWidth; cv.height = innerHeight; };
+  addEventListener('resize', ajustar); ajustar();
+  const colores = ['#6cc4f5', '#2b8fd1', '#ffb8cf', '#ffffff', '#ffd966'];
+  function paso() {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ps.forEach((p) => {
+      p.vy += 0.12; p.x += p.vx; p.y += p.vy; p.r += p.vr;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r);
+      if (p.h) { ctx.font = p.s * 2 + 'px serif'; ctx.fillText('🩵', -p.s, p.s); }
+      else { ctx.fillStyle = p.c; ctx.fillRect(-p.s / 2, -p.s / 2, p.s, p.s * 0.6); }
+      ctx.restore();
+    });
+    ps = ps.filter((p) => p.y < cv.height + 40);
+    if (ps.length) requestAnimationFrame(paso); else { corriendo = false; ctx.clearRect(0, 0, cv.width, cv.height); }
+  }
+  return function lanzar() {
+    if (reducido) return;
+    for (let i = 0; i < 140; i++) ps.push({
+      x: cv.width / 2, y: cv.height * 0.55, vx: (Math.random() - 0.5) * 14, vy: -Math.random() * 14 - 4,
+      r: Math.random() * 6, vr: (Math.random() - 0.5) * 0.3, s: 6 + Math.random() * 8,
+      c: colores[i % colores.length], h: i % 5 === 0,
+    });
+    if (!corriendo) { corriendo = true; requestAnimationFrame(paso); }
+  };
+})();
+
+/* ---- [G] Pastel: clic o soplido ---- */
+function iniciarPastel() {
+  const caja = $('pastel-caja'), msg = $('pastel-msg'), reset = $('pastel-reset'), soplar = $('pastel-soplar');
+  let apagada = false, stream = null;
+
+  function apagar() {
+    if (apagada) return;
+    apagada = true;
+    caja.classList.add('apagada');
+    msg.textContent = CONFIG.pastel.mensaje;
+    reset.classList.remove('hidden'); soplar.classList.add('hidden');
+    if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+    confeti();
+  }
+
+  async function escuchar() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ac = new AudioContext(), an = ac.createAnalyser();
+      an.fftSize = 512;
+      ac.createMediaStreamSource(stream).connect(an);
+      const d = new Uint8Array(an.fftSize);
+      let seguidos = 0;
+      msg.textContent = 'Te escucho... sopla fuerte 💨';
+      (function bucle() {
+        if (apagada || !stream) return;
+        an.getByteTimeDomainData(d);
+        let max = 0;
+        for (const v of d) max = Math.max(max, Math.abs(v - 128));
+        seguidos = max > CONFIG.pastel.umbral ? seguidos + 1 : 0;   // soplido sostenido, no un golpe de voz
+        if (seguidos > 8) { apagar(); return; }
+        requestAnimationFrame(bucle);
+      })();
+    } catch (e) { msg.textContent = CONFIG.pastel.sinMic; }
+  }
+
+  $('pastel-svg').addEventListener('click', apagar);
+  soplar.addEventListener('click', escuchar);
+  reset.addEventListener('click', () => {
+    apagada = false; caja.classList.remove('apagada'); msg.textContent = '';
+    reset.classList.add('hidden'); soplar.classList.remove('hidden');
+  });
+}
+
+/* ---- [K] Corazones secretos ---- */
+function iniciarSecretos() {
+  const lista = CONFIG.secretos.lista, toast = $('toast');
+  let hallados = 0, t;
+  const avisar = (txt) => {
+    toast.textContent = txt; toast.style.opacity = 1;
+    clearTimeout(t); t = setTimeout(() => (toast.style.opacity = 0), 4500);
+  };
+  lista.forEach((s) => {
+    const sec = $(s.en);
+    if (!sec) return;
+    const b = document.createElement('button');
+    b.className = 'secreto';
+    b.textContent = '🩵';
+    b.style.left = s.x; b.style.top = s.y;
+    b.setAttribute('aria-label', 'Corazón escondido');
+    b.addEventListener('click', () => {
+      b.classList.add('hallado'); hallados++;
+      avisar(hallados === lista.length ? CONFIG.secretos.final : s.frase);
+      if (hallados === lista.length) confeti();
+    });
+    sec.appendChild(b);
+  });
+}
+
+/* ---- [M] Love galaxia: estrellas en espiral + corazón-constelación + fugaces ---- */
+function iniciarGalaxia() {
+  const G = CONFIG.galaxia, sec = $('galaxia'), cv = $('galaxia-cv'), ctx = cv.getContext('2d'), msg = $('galaxia-msg');
+  const colores = ['255,255,255', '108,196,245', '255,184,207'];
+  // Contorno del corazón (ecuación paramétrica); la y se invierte para que quede derecho
+  const corazon = Array.from({ length: 40 }, (_, i) => {
+    const t = (i / 40) * Math.PI * 2;
+    return { x: 16 * Math.sin(t) ** 3, y: -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) };
+  });
+  let w, h, estrellas = [], fugaces = [], visible = false;
+
+  function ajustar() {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    w = sec.clientWidth; h = sec.clientHeight;
+    cv.width = w * dpr; cv.height = h * dpr;
+    cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+    const R = Math.hypot(w, h) * 0.55;
+    estrellas = Array.from({ length: Math.min(320, Math.round((w * h) / 3500)) }, (_, i) => {
+      const r = Math.pow(Math.random(), 0.7) * R;   // más densidad hacia el centro
+      return { a: r * 0.011 + (i % 3) * 2.094 + (Math.random() - 0.5) * 0.6, r, s: Math.random() * 1.6 + 0.4, f: Math.random() * 6.28, c: colores[i % 3] };
+    });
+    dibujar(0);
+  }
+
+  function dibujar(t) {
+    ctx.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h * 0.46, giro = reducido ? 0 : t * 0.00004;
+    // Resplandor del núcleo
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.min(w, h) * 0.55);
+    g.addColorStop(0, 'rgba(255,184,207,.18)'); g.addColorStop(0.5, 'rgba(108,196,245,.08)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    // Estrellas en espiral (disco aplastado en y para dar profundidad)
+    estrellas.forEach((e) => {
+      const an = e.a + giro, x = cx + Math.cos(an) * e.r, y = cy + Math.sin(an) * e.r * 0.55;
+      ctx.fillStyle = `rgba(${e.c},${0.35 + 0.65 * Math.abs(Math.sin(e.f + t * 0.0015))})`;
+      ctx.beginPath(); ctx.arc(x, y, e.s, 0, 6.283); ctx.fill();
+    });
+    // Corazón-constelación
+    const k = Math.min(w, h * 0.8) * 0.026 * (1 + (reducido ? 0 : 0.03 * Math.sin(t * 0.003)));
+    ctx.strokeStyle = 'rgba(108,196,245,.55)'; ctx.lineWidth = 1.2; ctx.beginPath();
+    corazon.forEach((p, i) => { const x = cx + p.x * k, y = cy + p.y * k; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.closePath(); ctx.stroke();
+    ctx.shadowColor = '#6cc4f5'; ctx.shadowBlur = 12;
+    corazon.forEach((p, i) => {
+      ctx.fillStyle = `rgba(255,255,255,${0.6 + 0.4 * Math.sin(t * 0.003 + i)})`;
+      ctx.beginPath(); ctx.arc(cx + p.x * k, cy + p.y * k, 2.4, 0, 6.283); ctx.fill();
+    });
+    ctx.shadowBlur = 0;
+    // Estrellas fugaces
+    fugaces.forEach((f) => {
+      f.x += f.vx; f.y += f.vy; f.v -= 0.012;
+      const gr = ctx.createLinearGradient(f.x, f.y, f.x - f.vx * 10, f.y - f.vy * 10);
+      gr.addColorStop(0, `rgba(255,255,255,${Math.max(f.v, 0)})`); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.strokeStyle = gr; ctx.lineWidth = 2; ctx.beginPath();
+      ctx.moveTo(f.x, f.y); ctx.lineTo(f.x - f.vx * 10, f.y - f.vy * 10); ctx.stroke();
+    });
+    fugaces = fugaces.filter((f) => f.v > 0);
+  }
+
+  const fugaz = () => { if (!reducido) fugaces.push({ x: w * (0.15 + Math.random() * 0.6), y: h * 0.05, vx: 6 + Math.random() * 3, vy: 3 + Math.random() * 2, v: 1 }); };
+
+  // Solo anima mientras la sección se ve (ahorra batería)
+  function bucle(t) { if (!visible) return; dibujar(t); requestAnimationFrame(bucle); }
+  new IntersectionObserver(([e]) => {
+    visible = e.isIntersecting;
+    if (visible && !reducido) requestAnimationFrame(bucle);
+  }, { threshold: 0.05 }).observe(sec);
+  setInterval(() => { if (visible) fugaz(); }, 6000);
+  addEventListener('resize', ajustar);
+  ajustar();
+
+  // Estrellas con mensaje
+  let vistas = 0;
+  document.querySelectorAll('.estrella-msg').forEach((b) => b.addEventListener('click', () => {
+    if (!b.classList.contains('vista')) vistas++;
+    b.classList.add('vista');
+    msg.textContent = vistas === G.mensajes.length ? G.final : G.mensajes[b.dataset.i].frase;
+    if (vistas === G.mensajes.length) confeti();
+  }));
+  $('galaxia-deseo').addEventListener('click', () => { fugaz(); msg.textContent = G.deseo; });
+}
+
+/* ---- [O] Easter egg: 5 toques seguidos al nombre ---- */
+function iniciarNombre() {
+  const b = $('nombre-btn'), ov = $('sorpresa'), cerrar = $('sorpresa-cerrar');
+  let n = 0, t;
+  const abrir = () => { ov.classList.remove('hidden'); ov.classList.add('grid'); cerrar.focus(); confeti(); };
+  const cerrarOv = () => { ov.classList.add('hidden'); ov.classList.remove('grid'); b.focus(); };
+  b.addEventListener('click', () => {
+    if (!reducido && b.animate) b.animate([{ transform: 'scale(1.06)' }, { transform: 'scale(1)' }], { duration: 150 });
+    n++; clearTimeout(t); t = setTimeout(() => (n = 0), 2000);   // si pasan 2 s sin tocar, vuelve a cero
+    if (n >= 5) { n = 0; abrir(); }
+  });
+  cerrar.addEventListener('click', cerrarOv);
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && ov.classList.contains('grid')) cerrarOv(); });
+}
+
+/* ---- [N] ¿Algo que quieras decirme?: ella escribe y se envía por WhatsApp ---- */
+function iniciarDecir() {
+  const D = CONFIG.decir, txt = $('decir-texto'), btn = $('decir-enviar');
+  const numero = D.whatsapp.replace(/\D/g, '');
+  function actualizar() {
+    const listo = txt.value.trim().length > 0;
+    btn.href = listo ? `https://wa.me/${numero}?text=${encodeURIComponent(txt.value.trim() + '\n\n' + D.firmaWA)}` : '#';
+    btn.setAttribute('aria-disabled', String(!listo));
+    btn.classList.toggle('opacity-50', !listo);
+    btn.classList.toggle('pointer-events-none', !listo);
+  }
+  txt.addEventListener('input', actualizar);
+  btn.addEventListener('click', (e) => {
+    if (!txt.value.trim()) { e.preventDefault(); return; }
+    $('decir-gracias').textContent = D.gracias;
+    confeti();
+  });
+  actualizar();
+}
+
+/* ---- Arranque ---- */
+render();
+prepararMusica();
+iniciarEntrada();
+iniciarCarta();
+iniciarFlip();
+iniciarPastel();
+iniciarSecretos();
+iniciarGalaxia();
+iniciarNombre();
+iniciarDecir();
+</script>
+</body>
+</html>
